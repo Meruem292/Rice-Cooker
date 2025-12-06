@@ -46,7 +46,7 @@ export const Landing: React.FC<LandingProps> = ({ onNavigate }) => {
         <div className="lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2 overflow-hidden">
           <img
             className="h-56 w-full object-cover sm:h-72 md:h-96 lg:w-full lg:h-full animate-float shadow-2xl transform scale-105"
-            src="https://picsum.photos/1200/800?grayscale"
+            src="https://hips.hearstapps.com/hmg-prod/images/del019924-sushi-rice-web-481-jg-index-67a80a467f954.jpg?crop=0.8891607203533809xw:1xh;center,top&resize=1200:*"
             alt="Smart Rice Cooker in modern kitchen"
           />
           <div className="absolute inset-0 bg-brand-900 mix-blend-multiply opacity-20 lg:opacity-10 pointer-events-none"></div>
