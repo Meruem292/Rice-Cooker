@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
+import { Logo } from '../components/Logo';
 
 interface LoginProps {
   onNavigate: (route: string) => void;
@@ -30,11 +31,9 @@ export const Login: React.FC<LoginProps> = ({ onNavigate }) => {
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 animate-slide-up">
         <div className="text-center">
-          <img 
-            src="/images/logoRicecooker.png" 
-            alt="RiceCookerPro Logo"
-            className="mx-auto h-24 w-auto object-contain transform hover:scale-110 transition-transform duration-300 hover:animate-wiggle"
-          />
+          <div className="mx-auto h-24 w-24 transform hover:scale-110 transition-transform duration-300 hover:animate-wiggle">
+            <Logo className="w-full h-full" />
+          </div>
           <h2 className="mt-6 text-3xl font-extrabold text-slate-900 tracking-tight">
             Welcome back
           </h2>

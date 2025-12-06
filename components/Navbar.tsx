@@ -2,6 +2,7 @@ import React from 'react';
 import { LogOut, Menu } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
+import { Logo } from './Logo';
 
 interface NavbarProps {
   user: any;
@@ -27,11 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onNavigate }) => {
             onClick={() => onNavigate(user ? 'DASHBOARD' : 'LANDING')}
           >
             <div className="flex-shrink-0 flex items-center gap-2">
-              <img 
-                src="/images/logoRicecooker.png" 
-                alt="RiceCookerPro Logo" 
-                className="h-10 w-auto object-contain transform group-hover:rotate-12 transition-transform duration-300"
-              />
+              <Logo className="h-10 w-10 transform group-hover:rotate-12 transition-transform duration-300" />
               <span className="font-bold text-xl text-slate-800 tracking-tight group-hover:text-brand-600 transition-colors">RiceCookerPro</span>
             </div>
           </div>
