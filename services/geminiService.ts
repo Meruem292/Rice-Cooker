@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Initialize Gemini
 // The API key must be provided via the API_KEY environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: "AIzaSyAqmHjWjQMRfzypIE4QogJnzfeYeaM9TYs" });
 
 export const getSmartCookingAdvice = async (userQuery: string) => {
   try {
