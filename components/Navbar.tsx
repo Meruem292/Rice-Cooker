@@ -30,7 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onNavigate }) => {
               <div className="bg-brand-600 p-2 rounded-lg transform group-hover:rotate-12 transition-transform duration-300 group-hover:shadow-lg shadow-brand-200">
                 <ChefHat className="h-6 w-6 text-white group-hover:animate-wiggle" />
               </div>
-              <span className="font-bold text-xl text-slate-800 tracking-tight group-hover:text-brand-600 transition-colors">SmartGohan</span>
+              <span className="font-bold text-xl text-slate-800 tracking-tight group-hover:text-brand-600 transition-colors">RiceCookerPro</span>
             </div>
           </div>
           

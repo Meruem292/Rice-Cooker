@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Sparkles, Send, Settings, Plus, Trash2, Smartphone, X, Utensils, Zap, Heart, Clock, Save } from 'lucide-react';
+import { Play, Square, Sparkles, Send, Settings, Plus, Trash2, Smartphone, X, Utensils, Zap, Heart, Clock, Save, Droplets, Flame } from 'lucide-react';
 import { ref, onValue, update, set, remove, push } from 'firebase/database';
 import { User } from 'firebase/auth';
 import { db } from '../firebaseConfig';
@@ -80,7 +80,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     }
   }, [ownedDevices, selectedDeviceId]);
 
-  // 2. Fetch Selected Device Data
+  // 2. Fetch Selected Device Data and Sync Timer
   useEffect(() => {
     if (!selectedDeviceId) {
       setConnected(false);
@@ -93,7 +93,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       if (data) {
         // Extract basic state
         const { schedules: _, ...rest } = data;
-        setDeviceState(prev => ({ ...prev, ...rest }));
+        
+        // Timer Sync Logic: Calculate remaining time based on cookingEndTime if available
+        let derivedTimeLeft = rest.timeLeftSeconds || 0;
+        let shouldAutoStop = false;
+        
+        if (rest.status === 'cooking' && rest.cookingEndTime) {
+           const now = Date.now();
+           if (now >= rest.cookingEndTime) {
+             shouldAutoStop = true;
+             derivedTimeLeft = 0;
+           } else {
+             const remaining = Math.max(0, Math.ceil((rest.cookingEndTime - now) / 1000));
+             derivedTimeLeft = remaining;
+           }
+        }
+
+        if (shouldAutoStop) {
+           // If time has passed but DB still says cooking, fix it immediately
+           const updates: any = {
+             status: 'warm',
+             timeLeftSeconds: 0,
+             cookingEndTime: null,
+             command: {
+               action: 'warm',
+               timestamp: Date.now()
+             }
+           };
+           update(ref(db, `devices/${selectedDeviceId}`), updates);
+           
+           // Update local state optimistically
+           setDeviceState(prev => ({ 
+             ...prev, 
+             ...rest, 
+             status: 'warm',
+             timeLeftSeconds: 0,
+             cookingEndTime: undefined
+           }));
+        } else {
+           setDeviceState(prev => ({ 
+             ...prev, 
+             ...rest, 
+             timeLeftSeconds: derivedTimeLeft 
+           }));
+        }
         setConnected(true);
       } else {
         setConnected(false);
@@ -121,21 +164,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     return () => unsubscribe();
   }, [user.uid]);
 
-  // Simulation Logic
+  // Simulation / Timer Logic
   useEffect(() => {
     let interval: any;
-    if (deviceState.status === 'cooking' && deviceState.timeLeftSeconds > 0) {
-      interval = setInterval(() => {
-        setDeviceState(prev => ({
-          ...prev,
-          timeLeftSeconds: Math.max(0, prev.timeLeftSeconds - 1),
-        }));
-      }, 1000);
-    } else if (deviceState.timeLeftSeconds === 0 && deviceState.status === 'cooking') {
-      handleStop(); 
+
+    if (deviceState.status === 'cooking') {
+      // Check if finished
+      if (deviceState.timeLeftSeconds <= 0) {
+        handleStop();
+      } else {
+        // Run ticker
+        interval = setInterval(() => {
+          setDeviceState(prev => {
+            // If we have an absolute end time, use it for accuracy and persistence
+            if (prev.cookingEndTime) {
+              const now = Date.now();
+              const remaining = Math.max(0, Math.ceil((prev.cookingEndTime - now) / 1000));
+              return { ...prev, timeLeftSeconds: remaining };
+            }
+            // Fallback for immediate UI feedback if no end time (legacy)
+            return { ...prev, timeLeftSeconds: Math.max(0, prev.timeLeftSeconds - 1) };
+          });
+        }, 1000);
+      }
     }
+    
     return () => clearInterval(interval);
-  }, [deviceState.status, deviceState.timeLeftSeconds]);
+  }, [deviceState.status, deviceState.timeLeftSeconds, deviceState.cookingEndTime]);
 
 
   // Device Management Functions
@@ -226,20 +281,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   // Control Functions
   const handleDispense = async () => {
     if (!selectedDeviceId) return;
-    const totalTime = formTime * 60; 
+    const now = Date.now();
     
-    // Send command to Firebase for the device to pick up
+    // Send command to Firebase for the device to pick up - Dispense Only
     const firebaseUpdates = {
-      status: 'cooking',
-      timeLeftSeconds: totalTime,
-      totalTimeSeconds: totalTime,
-      mode: formMode,
       command: {
         action: 'dispense',
         riceCups: formRice,
         waterRatio: formRatio,
+        timestamp: now
+      }
+    };
+    
+    await update(ref(db, `devices/${selectedDeviceId}`), firebaseUpdates);
+  };
+
+  const handleCook = async () => {
+    if (!selectedDeviceId) return;
+    const totalTime = formTime * 60; 
+    const now = Date.now();
+    const endTime = now + (totalTime * 1000);
+    
+    // Send command to Firebase - Cook Only
+    const firebaseUpdates = {
+      status: 'cooking',
+      timeLeftSeconds: totalTime,
+      totalTimeSeconds: totalTime,
+      cookingEndTime: endTime,
+      mode: formMode,
+      command: {
+        action: 'cook',
         cookingTime: totalTime,
-        timestamp: Date.now()
+        mode: formMode,
+        timestamp: now
       }
     };
 
@@ -248,6 +322,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       status: 'cooking',
       timeLeftSeconds: totalTime,
       totalTimeSeconds: totalTime,
+      cookingEndTime: endTime,
       mode: formMode as any
     };
     
@@ -258,13 +333,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const handleStartAI = async (config: any) => {
      if (!selectedDeviceId) return;
      const totalTime = config.time || 1800;
-     const updates: Partial<RiceCookerState> = {
+     const now = Date.now();
+     const endTime = now + (totalTime * 1000);
+     const mode = config.mode || 'white';
+
+     const updates: any = {
        status: 'cooking',
        timeLeftSeconds: totalTime,
        totalTimeSeconds: totalTime,
-       mode: config.mode || 'white'
+       cookingEndTime: endTime,
+       mode: mode,
+       command: {
+        action: 'cook',
+        cookingTime: totalTime,
+        mode: mode,
+        timestamp: now
+       }
      };
-     setDeviceState(prev => ({ ...prev, ...updates }));
+
+     const localUpdates: Partial<RiceCookerState> = {
+        status: 'cooking',
+        timeLeftSeconds: totalTime,
+        totalTimeSeconds: totalTime,
+        cookingEndTime: endTime,
+        mode: mode as any
+     };
+
+     setDeviceState(prev => ({ ...prev, ...localUpdates }));
      await update(ref(db, `devices/${selectedDeviceId}`), updates);
   };
 
@@ -273,9 +368,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const updates: Partial<RiceCookerState> = {
       status: 'warm',
       timeLeftSeconds: 0,
+      cookingEndTime: null as any
+    };
+    const firebaseUpdates = {
+      ...updates,
+      command: {
+        action: 'warm', // Explicitly switch to warm as requested
+        timestamp: Date.now()
+      }
     };
     setDeviceState(prev => ({ ...prev, ...updates }));
-    await update(ref(db, `devices/${selectedDeviceId}`), updates);
+    await update(ref(db, `devices/${selectedDeviceId}`), firebaseUpdates);
   };
 
   const handleAskAI = async () => {
@@ -420,9 +523,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                    <div className="flex gap-4 z-10">
                      {deviceState.status !== 'cooking' ? (
                        <button 
-                        onClick={handleDispense}
+                        onClick={handleCook}
                         className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 hover:shadow-brand-300">
-                         <Play className="w-5 h-5 fill-current" /> Start Now ({formMode})
+                         <Play className="w-5 h-5 fill-current" /> Start Cook ({formMode})
                        </button>
                      ) : (
                        <button 
@@ -590,17 +693,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <Zap className="w-5 h-5 animate-pulse" /> Currently Cooking
                       </button>
                     ) : (
-                      <button 
-                        onClick={handleDispense}
-                        className="w-full max-w-sm flex items-center justify-center gap-3 bg-brand-600 hover:bg-brand-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 group relative overflow-hidden z-10"
-                      >
-                        <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out"></div>
-                        <Utensils className="w-5 h-5 relative z-10" /> 
-                        <span className="relative z-10">Dispense & Cook</span>
-                      </button>
+                      <div className="w-full max-w-sm flex flex-col gap-3 relative z-10">
+                        <button 
+                          onClick={handleDispense}
+                          className="w-full flex items-center justify-center gap-3 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition-all transform hover:scale-105 active:scale-95 group/dispense relative overflow-hidden"
+                        >
+                          <Droplets className="w-5 h-5 relative z-10" /> 
+                          <span className="relative z-10">Dispense Only</span>
+                        </button>
+
+                        <button 
+                          onClick={handleCook}
+                          className="w-full flex items-center justify-center gap-3 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 group/cook relative overflow-hidden"
+                        >
+                          <Flame className="w-5 h-5 relative z-10" /> 
+                          <span className="relative z-10">Start Cooking</span>
+                        </button>
+                      </div>
                     )}
                     <p className="text-xs text-slate-400 mt-4 max-w-xs mx-auto relative z-10">
-                      Triggers automatic dispensing from hoppers and starts the {formTime} minute cooking cycle immediately.
+                      Dispense ingredients first, then start the cooking cycle.
                     </p>
                   </div>
                 </div>

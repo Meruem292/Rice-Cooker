@@ -19,7 +19,7 @@ export const Landing: React.FC<LandingProps> = ({ onNavigate }) => {
                   <span className="block text-brand-600 xl:inline">Every Single Time.</span>
                 </h1>
                 <p className="mt-3 text-base text-slate-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0 transition-all hover:text-slate-600">
-                  Control your cooking from anywhere. The SmartGohan AI automatically adjusts water ratios and cooking times for over 50 varieties of rice.
+                  Control your cooking from anywhere. The RiceCookerPro AI automatically adjusts water ratios and cooking times for over 50 varieties of rice.
                 </p>
                 <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start gap-4">
                   <div className="rounded-md shadow group">

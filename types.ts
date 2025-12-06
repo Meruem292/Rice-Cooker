@@ -1,3 +1,4 @@
+
 export interface RiceCookerState {
   status: 'idle' | 'cooking' | 'warm' | 'scheduled';
   riceLevel: number; // 0-100%
@@ -6,6 +7,7 @@ export interface RiceCookerState {
   totalTimeSeconds: number;
   mode: 'white' | 'brown' | 'sushi' | 'quick' | 'porridge';
   error?: string;
+  cookingEndTime?: number;
 }
 
 export interface CookingPreset {
