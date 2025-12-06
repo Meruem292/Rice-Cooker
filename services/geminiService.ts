@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 // Initialize Gemini
 // Note: In a real production app, API calls might be proxied through a backend to protect the key,
 // or use Firebase App Check. For this demo, we use the env variable directly.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: "AIzaSyAqmHjWjQMRfzypIE4QogJnzfeYeaM9TYs" });
 
 export const getSmartCookingAdvice = async (userQuery: string) => {
   try {
