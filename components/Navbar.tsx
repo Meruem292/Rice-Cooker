@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, ChefHat, Menu } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 
@@ -27,9 +27,11 @@ export const Navbar: React.FC<NavbarProps> = ({ user, onNavigate }) => {
             onClick={() => onNavigate(user ? 'DASHBOARD' : 'LANDING')}
           >
             <div className="flex-shrink-0 flex items-center gap-2">
-              <div className="bg-brand-600 p-2 rounded-lg transform group-hover:rotate-12 transition-transform duration-300 group-hover:shadow-lg shadow-brand-200">
-                <ChefHat className="h-6 w-6 text-white group-hover:animate-wiggle" />
-              </div>
+              <img 
+                src="/images/logoRicecooker.png" 
+                alt="RiceCookerPro Logo" 
+                className="h-10 w-auto object-contain transform group-hover:rotate-12 transition-transform duration-300"
+              />
               <span className="font-bold text-xl text-slate-800 tracking-tight group-hover:text-brand-600 transition-colors">RiceCookerPro</span>
             </div>
           </div>

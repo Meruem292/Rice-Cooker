@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../firebaseConfig';
 import { ref, set } from 'firebase/database';
-import { ChefHat } from 'lucide-react';
 
 interface SignupProps {
   onNavigate: (route: string) => void;
@@ -41,9 +40,11 @@ export const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
     <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 animate-slide-up">
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-200 transform hover:scale-110 transition-transform duration-300">
-            <ChefHat className="h-10 w-10 text-white animate-wiggle" />
-          </div>
+          <img 
+            src="/images/logoRicecooker.png" 
+            alt="RiceCookerPro Logo"
+            className="mx-auto h-24 w-auto object-contain transform hover:scale-110 transition-transform duration-300 hover:animate-wiggle"
+          />
           <h2 className="mt-6 text-3xl font-extrabold text-slate-900 tracking-tight">
             Create your account
           </h2>

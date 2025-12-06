@@ -456,7 +456,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Status</div>
                       <div className={`font-semibold capitalize transition-colors duration-500 ${
                         deviceState.status === 'cooking' ? 'text-brand-600 animate-pulse' : 
-                        deviceState.status === 'warm' ? 'text-orange-500' : 'text-slate-600'
+                        deviceState.status === 'warm' ? 'text-brand-400' : 'text-slate-600'
                       }`}>
                         {deviceState.status}
                       </div>
@@ -503,7 +503,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <circle cx="128" cy="128" r="120" stroke="#f1f5f9" strokeWidth="12" fill="none" />
                         <circle 
                           cx="128" cy="128" r="120" 
-                          stroke="#dc2626" 
+                          stroke="#E2852E" 
                           strokeWidth="12" 
                           fill="none" 
                           strokeLinecap="round"
@@ -524,7 +524,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                      {deviceState.status !== 'cooking' ? (
                        <button 
                         onClick={handleCook}
-                        className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 hover:shadow-brand-300">
+                        className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 hover:shadow-brand-300">
                          <Play className="w-5 h-5 fill-current" /> Start Cook ({formMode})
                        </button>
                      ) : (
@@ -542,8 +542,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-200 flex flex-col h-[400px] overflow-hidden group">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-1.5 bg-purple-100 rounded-lg group-hover:rotate-12 transition-transform duration-300">
-                        <Sparkles className="w-4 h-4 text-purple-600" />
+                    <div className="p-1.5 bg-brand-100 rounded-lg group-hover:rotate-12 transition-transform duration-300">
+                        <Sparkles className="w-4 h-4 text-brand-600" />
                     </div>
                     <h3 className="font-bold text-slate-800 text-sm">Smart Chef</h3>
                   </div>
@@ -563,17 +563,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       onChange={(e) => setAiPrompt(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAskAI()}
                       placeholder="Type..."
-                      className="w-full pl-3 pr-10 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 transition-all"
+                      className="w-full pl-3 pr-10 py-2 rounded-lg border border-slate-200 text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all"
                     />
                     <button 
                         onClick={handleAskAI} 
-                        className="absolute right-2 top-1.5 text-purple-400 hover:text-purple-600 transition-colors p-1 hover:bg-purple-50 rounded"
+                        className="absolute right-2 top-1.5 text-brand-400 hover:text-brand-600 transition-colors p-1 hover:bg-brand-50 rounded"
                     >
                       <Send className="w-3 h-3" />
                     </button>
                   </div>
                   {aiResponse?.config && (
-                    <button onClick={() => handleStartAI(aiResponse.config)} className="mt-2 w-full bg-purple-600 hover:bg-purple-700 text-white text-xs py-2 rounded-lg transition-all transform active:scale-95 shadow-md shadow-purple-200">
+                    <button onClick={() => handleStartAI(aiResponse.config)} className="mt-2 w-full bg-brand-500 hover:bg-brand-600 text-white text-xs py-2 rounded-lg transition-all transform active:scale-95 shadow-md shadow-brand-200">
                       Use AI Settings
                     </button>
                   )}
@@ -589,7 +589,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 
                 <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                   <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-brand-600 animate-spin-slow" />
+                    <Settings className="w-5 h-5 text-brand-500 animate-spin-slow" />
                     Configuration & Control
                   </h3>
                   
@@ -640,34 +640,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                   <div className="space-y-8 px-2">
                     <div className="group">
                       <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-brand-700 transition-colors">
-                        Rice Amount <span className="text-brand-600 font-bold bg-brand-50 px-2 py-0.5 rounded-md">{formRice} Cups</span>
+                        Rice Amount <span className="text-brand-600 font-bold bg-brand-100 px-2 py-0.5 rounded-md">{formRice} Cups</span>
                       </label>
                       <input 
                         type="range" min="1" max="5" step="0.5" 
                         value={formRice} onChange={(e) => setFormRice(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600 hover:accent-brand-700 transition-all"
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-500 hover:accent-brand-600 transition-all"
                       />
                     </div>
                     
                     <div className="group">
-                      <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-blue-700 transition-colors">
-                        Water Ratio <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded-md">{formRatio}x ({(formRice * formRatio).toFixed(1)} Cups)</span>
+                      <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-water-600 transition-colors">
+                        Water Ratio <span className="text-water-700 font-bold bg-water-100 px-2 py-0.5 rounded-md">{formRatio}x ({(formRice * formRatio).toFixed(1)} Cups)</span>
                       </label>
                       <input 
                         type="range" min="1" max="2.5" step="0.1" 
                         value={formRatio} onChange={(e) => setFormRatio(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-600 transition-all"
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-water-500 hover:accent-water-600 transition-all"
                       />
                     </div>
 
                     <div className="group">
-                      <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-purple-700 transition-colors">
-                        Cooking Duration <span className="text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded-md">{formTime} Mins</span>
+                      <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-brand-400 transition-colors">
+                        Cooking Duration <span className="text-brand-500 font-bold bg-brand-50 px-2 py-0.5 rounded-md">{formTime} Mins</span>
                       </label>
                       <input 
                         type="range" min="20" max="120" step="5" 
                         value={formTime} onChange={(e) => setFormTime(parseInt(e.target.value))}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-500 hover:accent-purple-600 transition-all"
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-300 hover:accent-brand-400 transition-all"
                       />
                     </div>
                   </div>
@@ -682,7 +682,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Ready to Cook?</h4>
                       <p className="text-3xl font-extrabold text-slate-900 transition-all duration-300 key={formRice} animate-pop">{formRice} Cups Rice</p>
                       <p className="text-lg font-medium text-slate-500 transition-all duration-300 key={formRatio}">+ {(formRice * formRatio).toFixed(1)} Cups Water</p>
-                      <p className="text-sm font-semibold text-purple-600 mt-2 bg-purple-50 inline-block px-3 py-1 rounded-full">{formTime} Minutes Cycle</p>
+                      <p className="text-sm font-semibold text-brand-600 mt-2 bg-brand-50 inline-block px-3 py-1 rounded-full">{formTime} Minutes Cycle</p>
                     </div>
                     
                     {deviceState.status === 'cooking' ? (
@@ -696,7 +696,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <div className="w-full max-w-sm flex flex-col gap-3 relative z-10">
                         <button 
                           onClick={handleDispense}
-                          className="w-full flex items-center justify-center gap-3 bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-200 transition-all transform hover:scale-105 active:scale-95 group/dispense relative overflow-hidden"
+                          className="w-full flex items-center justify-center gap-3 bg-water-500 hover:bg-water-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-water-200 transition-all transform hover:scale-105 active:scale-95 group/dispense relative overflow-hidden"
                         >
                           <Droplets className="w-5 h-5 relative z-10" /> 
                           <span className="relative z-10">Dispense Only</span>
@@ -704,7 +704,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
                         <button 
                           onClick={handleCook}
-                          className="w-full flex items-center justify-center gap-3 bg-brand-600 hover:bg-brand-700 text-white py-3 rounded-xl font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 group/cook relative overflow-hidden"
+                          className="w-full flex items-center justify-center gap-3 bg-brand-500 hover:bg-brand-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 group/cook relative overflow-hidden"
                         >
                           <Flame className="w-5 h-5 relative z-10" /> 
                           <span className="relative z-10">Start Cooking</span>
@@ -780,7 +780,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     <button 
                       type="submit" 
                       disabled={isAddingDevice || !newDeviceId.trim()}
-                      className="bg-brand-600 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 flex items-center gap-2 shadow-md shadow-brand-100"
+                      className="bg-brand-500 text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 flex items-center gap-2 shadow-md shadow-brand-100"
                     >
                       {isAddingDevice ? 'Adding...' : <><Plus className="w-4 h-4" /> Add</>}
                     </button>
@@ -821,7 +821,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                   <button 
                     onClick={handleSavePreset}
                     disabled={!newPresetName.trim()}
-                    className="w-full bg-brand-600 text-white py-3 rounded-lg font-bold hover:bg-brand-700 disabled:opacity-50 transition-all shadow-md shadow-brand-200 mt-2"
+                    className="w-full bg-brand-500 text-white py-3 rounded-lg font-bold hover:bg-brand-600 disabled:opacity-50 transition-all shadow-md shadow-brand-200 mt-2"
                   >
                     Save Preset
                   </button>
