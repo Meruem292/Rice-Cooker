@@ -1,6 +1,6 @@
 
 export interface RiceCookerState {
-  status: 'idle' | 'cooking' | 'warm' | 'scheduled';
+  status: 'idle' | 'cooking' | 'warm' | 'scheduled' | 'dispensing';
   riceLevel: number; // 0-100%
   waterLevel: number; // 0-100%
   timeLeftSeconds: number;

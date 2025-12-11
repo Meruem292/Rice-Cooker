@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Sparkles, Send, Settings, Plus, Trash2, Smartphone, X, Utensils, Zap, Heart, Clock, Save, Droplets, Flame } from 'lucide-react';
+import { Play, Square, Sparkles, Send, Settings, Plus, Trash2, Smartphone, X, Utensils, Zap, Heart, Clock, Save, Droplets, Flame, Ban, AlertCircle } from 'lucide-react';
 import { ref, onValue, update, set, remove, push } from 'firebase/database';
 import { User } from 'firebase/auth';
 import { db } from '../firebaseConfig';
@@ -11,10 +11,10 @@ interface DashboardProps {
 }
 
 const DEFAULT_PRESETS = [
-  { id: 'white', name: 'Perfect White', rice: 2, ratio: 1.2, mode: 'white', time: 30 },
-  { id: 'brown', name: 'Healthy Brown', rice: 2, ratio: 1.5, mode: 'brown', time: 60 },
-  { id: 'sushi', name: 'Sushi Grade', rice: 3, ratio: 1.1, mode: 'sushi', time: 45 },
-  { id: 'porridge', name: 'Morning Porridge', rice: 1, ratio: 4.0, mode: 'porridge', time: 90 },
+  { id: 'white', name: 'Perfect White', rice: 2, water: 2, mode: 'white', time: 30 },
+  { id: 'brown', name: 'Healthy Brown', rice: 2, water: 3, mode: 'brown', time: 60 },
+  { id: 'sushi', name: 'Sushi Grade', rice: 3, water: 3, mode: 'sushi', time: 45 },
+  { id: 'porridge', name: 'Morning Porridge', rice: 1, water: 4, mode: 'porridge', time: 90 },
 ];
 
 export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
@@ -37,7 +37,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
   // Form State
   const [formRice, setFormRice] = useState(2);
-  const [formRatio, setFormRatio] = useState(1.2);
+  const [formWater, setFormWater] = useState(2); // Explicit water cups instead of ratio
   const [formMode, setFormMode] = useState('white');
   const [formTime, setFormTime] = useState(30);
 
@@ -71,7 +71,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   // 1.5 Sync Selection with Device List
   useEffect(() => {
     if (ownedDevices.length > 0) {
-      // If no selection, or current selection is no longer in the list (e.g. deleted)
       if (!selectedDeviceId || !ownedDevices.includes(selectedDeviceId)) {
         setSelectedDeviceId(ownedDevices[0]);
       }
@@ -80,7 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     }
   }, [ownedDevices, selectedDeviceId]);
 
-  // 2. Fetch Selected Device Data and Sync Timer
+  // 2. Fetch Selected Device Data and Sync Logic
   useEffect(() => {
     if (!selectedDeviceId) {
       setConnected(false);
@@ -91,52 +90,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const unsubscribe = onValue(deviceRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        // Extract basic state
-        const { schedules: _, ...rest } = data;
+        // DB Structure: { cook: boolean, cookTime: number, cookStartTime: number, dispense: boolean, ... }
         
-        // Timer Sync Logic: Calculate remaining time based on cookingEndTime if available
-        let derivedTimeLeft = rest.timeLeftSeconds || 0;
-        let shouldAutoStop = false;
-        
-        if (rest.status === 'cooking' && rest.cookingEndTime) {
-           const now = Date.now();
-           if (now >= rest.cookingEndTime) {
-             shouldAutoStop = true;
-             derivedTimeLeft = 0;
-           } else {
-             const remaining = Math.max(0, Math.ceil((rest.cookingEndTime - now) / 1000));
-             derivedTimeLeft = remaining;
-           }
+        let newStatus: RiceCookerState['status'] = 'idle';
+        let totalTime = 0;
+        let estimatedTimeLeft = 0;
+        let cookingEndTime: number | undefined = undefined;
+
+        if (data.cook) {
+          // COOKING LOGIC
+          const durationMinutes = data.cookTime || 30;
+          totalTime = durationMinutes * 60;
+          
+          // Use cookStartTime for persistence if available, otherwise fallback to Date.now()
+          const startTime = data.cookStartTime || Date.now();
+          cookingEndTime = startTime + (totalTime * 1000);
+          
+          const now = Date.now();
+          const elapsedSeconds = (now - startTime) / 1000;
+          const remaining = Math.max(0, Math.ceil(totalTime - elapsedSeconds));
+
+          // Auto-Stop if time has expired while disconnected
+          if (remaining <= 0) {
+             update(ref(db, `devices/${selectedDeviceId}`), { 
+               cook: false, 
+               cookTime: 0, 
+               cookStartTime: null 
+             });
+             newStatus = 'idle';
+             estimatedTimeLeft = 0;
+          } else {
+             newStatus = 'cooking';
+             estimatedTimeLeft = remaining;
+          }
+
+        } else if (data.dispense) {
+          // DISPENSING LOGIC
+          newStatus = 'dispensing';
+          // Estimate dispensing time based on cups (5s base + 2s per cup rice)
+          const riceAmount = data.riceDispenseCup || 0;
+          totalTime = 5 + (riceAmount * 2);
+          // For dispensing, we don't strictly persist time across reloads in this version,
+          // but we could if we added a dispenseStartTime.
+          // For now, it resets on reload, but completion is handled by timer logic.
+          estimatedTimeLeft = totalTime; 
+        } else {
+          newStatus = 'idle';
         }
 
-        if (shouldAutoStop) {
-           // If time has passed but DB still says cooking, fix it immediately
-           const updates: any = {
-             status: 'warm',
-             timeLeftSeconds: 0,
-             cookingEndTime: null,
-             command: {
-               action: 'warm',
-               timestamp: Date.now()
-             }
-           };
-           update(ref(db, `devices/${selectedDeviceId}`), updates);
-           
-           // Update local state optimistically
-           setDeviceState(prev => ({ 
-             ...prev, 
-             ...rest, 
-             status: 'warm',
-             timeLeftSeconds: 0,
-             cookingEndTime: undefined
-           }));
-        } else {
-           setDeviceState(prev => ({ 
-             ...prev, 
-             ...rest, 
-             timeLeftSeconds: derivedTimeLeft 
-           }));
-        }
+        setDeviceState(prev => {
+          // Avoid stutter by keeping local time if status is same and time is close
+          const isSameStatus = prev.status === newStatus;
+          
+          return {
+            ...prev,
+            status: newStatus,
+            timeLeftSeconds: isSameStatus && prev.timeLeftSeconds > 0 && newStatus === 'dispensing' ? prev.timeLeftSeconds : estimatedTimeLeft,
+            totalTimeSeconds: totalTime,
+            cookingEndTime: cookingEndTime,
+          };
+        });
         setConnected(true);
       } else {
         setConnected(false);
@@ -164,58 +177,169 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     return () => unsubscribe();
   }, [user.uid]);
 
-  // Simulation / Timer Logic
+  // Timer Logic
   useEffect(() => {
     let interval: any;
 
-    if (deviceState.status === 'cooking') {
-      // Check if finished
+    if (deviceState.status === 'cooking' || deviceState.status === 'dispensing') {
+      
+      // Check for finish
       if (deviceState.timeLeftSeconds <= 0) {
-        handleStop();
+         if (selectedDeviceId) {
+             if (deviceState.status === 'cooking') {
+                 // Cooking finished
+                 update(ref(db, `devices/${selectedDeviceId}`), { 
+                   cook: false, 
+                   cookTime: 0,
+                   cookStartTime: null
+                 });
+             }
+             // NOTE: Auto-off for dispense removed per request. 
+             // Device remains in 'dispensing' state (0s left) until hardware or user updates DB.
+         }
       } else {
-        // Run ticker
         interval = setInterval(() => {
           setDeviceState(prev => {
-            // If we have an absolute end time, use it for accuracy and persistence
-            if (prev.cookingEndTime) {
-              const now = Date.now();
-              const remaining = Math.max(0, Math.ceil((prev.cookingEndTime - now) / 1000));
-              return { ...prev, timeLeftSeconds: remaining };
-            }
-            // Fallback for immediate UI feedback if no end time (legacy)
-            return { ...prev, timeLeftSeconds: Math.max(0, prev.timeLeftSeconds - 1) };
+             // If cooking, use absolute time for precision
+             if (prev.status === 'cooking' && prev.cookingEndTime) {
+                 const remaining = Math.max(0, Math.ceil((prev.cookingEndTime - Date.now()) / 1000));
+                 return { ...prev, timeLeftSeconds: remaining };
+             }
+             // Fallback for dispensing
+             return { ...prev, timeLeftSeconds: Math.max(0, prev.timeLeftSeconds - 1) };
           });
         }, 1000);
       }
     }
     
     return () => clearInterval(interval);
-  }, [deviceState.status, deviceState.timeLeftSeconds, deviceState.cookingEndTime]);
+  }, [deviceState.status, deviceState.timeLeftSeconds, deviceState.cookingEndTime, selectedDeviceId]);
 
+  // CONTROL FUNCTIONS
+
+  const handleCancel = async () => {
+    if (!selectedDeviceId) return;
+    // Reset all flags
+    const updates = {
+      cook: false,
+      cookTime: 0,
+      cookStartTime: null,
+      dispense: false,
+      waterDispenseCup: 0,
+      riceDispenseCup: 0
+    };
+    
+    setDeviceState(prev => ({ ...prev, status: 'idle', timeLeftSeconds: 0 }));
+    await update(ref(db, `devices/${selectedDeviceId}`), updates);
+  };
+
+  const handleDispense = async () => {
+    if (!selectedDeviceId) return;
+    if (deviceState.status !== 'idle') return;
+
+    // Use explicit whole number cups
+    const waterCups = formWater;
+    
+    const updates = {
+      dispense: true,
+      riceDispenseCup: formRice,
+      waterDispenseCup: waterCups,
+      cook: false,
+      cookTime: 0,
+      cookStartTime: null
+    };
+
+    const dispenseTime = 5 + Math.ceil(formRice * 2);
+    
+    setDeviceState(prev => ({ 
+        ...prev, 
+        status: 'dispensing',
+        timeLeftSeconds: dispenseTime,
+        totalTimeSeconds: dispenseTime
+    }));
+    
+    await update(ref(db, `devices/${selectedDeviceId}`), updates);
+  };
+
+  const handleCook = async () => {
+    if (!selectedDeviceId) return;
+    if (deviceState.status !== 'idle') return;
+
+    const totalTimeSeconds = formTime * 60;
+    const now = Date.now();
+    const endTime = now + (totalTimeSeconds * 1000);
+    
+    const updates = {
+      cook: true,
+      cookTime: formTime,
+      cookStartTime: now, // Add start time for persistence
+      dispense: false,
+      riceDispenseCup: 0,
+      waterDispenseCup: 0
+    };
+
+    setDeviceState(prev => ({ 
+      ...prev, 
+      status: 'cooking',
+      timeLeftSeconds: totalTimeSeconds,
+      totalTimeSeconds: totalTimeSeconds,
+      cookingEndTime: endTime,
+      mode: formMode as any
+    }));
+    
+    await update(ref(db, `devices/${selectedDeviceId}`), updates);
+  };
+
+  const handleStartAI = async (config: any) => {
+     if (!selectedDeviceId) return;
+     if (deviceState.status !== 'idle') return;
+
+     const timeMinutes = config.time ? config.time / 60 : 30;
+     const totalTimeSeconds = timeMinutes * 60;
+     const now = Date.now();
+     const endTime = now + (totalTimeSeconds * 1000);
+
+     const updates = {
+       cook: true,
+       cookTime: timeMinutes,
+       cookStartTime: now,
+       dispense: false,
+       riceDispenseCup: 0,
+       waterDispenseCup: 0
+     };
+
+     setDeviceState(prev => ({ 
+        ...prev, 
+        status: 'cooking',
+        timeLeftSeconds: totalTimeSeconds,
+        totalTimeSeconds: totalTimeSeconds,
+        cookingEndTime: endTime,
+        mode: config.mode || 'white' as any
+     }));
+     
+     await update(ref(db, `devices/${selectedDeviceId}`), updates);
+  };
+
+  const handleStop = async () => {
+    await handleCancel();
+  };
 
   // Device Management Functions
   const handleAddDevice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeviceId.trim()) return;
-    
     setIsAddingDevice(true);
     const id = newDeviceId.trim();
-    
     try {
-      // 1. Add to user's list
-      await set(ref(db, `users/${user.uid}/ownedDevices/${id}`), {
-        addedAt: Date.now()
-      });
-
-      // 2. Initialize device if it doesn't exist
+      await set(ref(db, `users/${user.uid}/ownedDevices/${id}`), { addedAt: Date.now() });
       await update(ref(db, `devices/${id}`), {
-        status: 'idle',
-        riceLevel: 100,
-        waterLevel: 100,
-        mode: 'white',
-        lastUpdated: Date.now()
+        cook: false,
+        cookTime: 0,
+        cookStartTime: null,
+        dispense: false,
+        waterDispenseCup: 0,
+        riceDispenseCup: 0
       });
-
       setNewDeviceId('');
       setSelectedDeviceId(id);
     } catch (error) {
@@ -229,36 +353,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     e.stopPropagation();
     e.preventDefault();
     
-    if (confirm(`Are you sure you want to remove device ${deviceId}?`)) {
+    if (window.confirm(`Are you sure you want to remove device ${deviceId}?`)) {
       try {
         await remove(ref(db, `users/${user.uid}/ownedDevices/${deviceId}`));
-        // Selection update is handled by the useEffect watching ownedDevices
       } catch (error) {
         console.error("Failed to remove device", error);
+        alert("Failed to delete device. Please try again.");
       }
     }
   };
 
   const handleApplyPreset = (preset: any) => {
+    if (deviceState.status !== 'idle') return;
     setFormRice(preset.rice);
-    setFormRatio(preset.ratio);
+    // Handle both new explicit water presets and old ratio presets
+    if (preset.water) {
+        setFormWater(preset.water);
+    } else if (preset.ratio) {
+        setFormWater(Math.max(1, Math.round(preset.rice * preset.ratio)));
+    }
     setFormMode(preset.mode);
     if (preset.time) setFormTime(preset.time);
   };
 
   const handleSavePreset = async () => {
     if (!newPresetName.trim()) return;
-    
     try {
       const newPreset = {
         name: newPresetName,
         rice: formRice,
-        ratio: formRatio,
+        water: formWater, // Save explicit water amount
         mode: formMode,
         time: formTime,
         createdAt: Date.now()
       };
-      
       await push(ref(db, `users/${user.uid}/presets`), newPreset);
       setShowSaveModal(false);
       setNewPresetName('');
@@ -278,109 +406,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     }
   };
 
-  // Control Functions
-  const handleDispense = async () => {
-    if (!selectedDeviceId) return;
-    const now = Date.now();
-    
-    // Send command to Firebase for the device to pick up - Dispense Only
-    const firebaseUpdates = {
-      command: {
-        action: 'dispense',
-        riceCups: formRice,
-        waterRatio: formRatio,
-        timestamp: now
-      }
-    };
-    
-    await update(ref(db, `devices/${selectedDeviceId}`), firebaseUpdates);
-  };
-
-  const handleCook = async () => {
-    if (!selectedDeviceId) return;
-    const totalTime = formTime * 60; 
-    const now = Date.now();
-    const endTime = now + (totalTime * 1000);
-    
-    // Send command to Firebase - Cook Only
-    const firebaseUpdates = {
-      status: 'cooking',
-      timeLeftSeconds: totalTime,
-      totalTimeSeconds: totalTime,
-      cookingEndTime: endTime,
-      mode: formMode,
-      command: {
-        action: 'cook',
-        cookingTime: totalTime,
-        mode: formMode,
-        timestamp: now
-      }
-    };
-
-    // Update local state for immediate feedback
-    const localUpdates: Partial<RiceCookerState> = {
-      status: 'cooking',
-      timeLeftSeconds: totalTime,
-      totalTimeSeconds: totalTime,
-      cookingEndTime: endTime,
-      mode: formMode as any
-    };
-    
-    setDeviceState(prev => ({ ...prev, ...localUpdates }));
-    await update(ref(db, `devices/${selectedDeviceId}`), firebaseUpdates);
-  };
-
-  const handleStartAI = async (config: any) => {
-     if (!selectedDeviceId) return;
-     const totalTime = config.time || 1800;
-     const now = Date.now();
-     const endTime = now + (totalTime * 1000);
-     const mode = config.mode || 'white';
-
-     const updates: any = {
-       status: 'cooking',
-       timeLeftSeconds: totalTime,
-       totalTimeSeconds: totalTime,
-       cookingEndTime: endTime,
-       mode: mode,
-       command: {
-        action: 'cook',
-        cookingTime: totalTime,
-        mode: mode,
-        timestamp: now
-       }
-     };
-
-     const localUpdates: Partial<RiceCookerState> = {
-        status: 'cooking',
-        timeLeftSeconds: totalTime,
-        totalTimeSeconds: totalTime,
-        cookingEndTime: endTime,
-        mode: mode as any
-     };
-
-     setDeviceState(prev => ({ ...prev, ...localUpdates }));
-     await update(ref(db, `devices/${selectedDeviceId}`), updates);
-  };
-
-  const handleStop = async () => {
-    if (!selectedDeviceId) return;
-    const updates: Partial<RiceCookerState> = {
-      status: 'warm',
-      timeLeftSeconds: 0,
-      cookingEndTime: null as any
-    };
-    const firebaseUpdates = {
-      ...updates,
-      command: {
-        action: 'warm', // Explicitly switch to warm as requested
-        timestamp: Date.now()
-      }
-    };
-    setDeviceState(prev => ({ ...prev, ...updates }));
-    await update(ref(db, `devices/${selectedDeviceId}`), firebaseUpdates);
-  };
-
   const handleAskAI = async () => {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
@@ -388,18 +413,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
     try {
       const advice = await getSmartCookingAdvice(aiPrompt);
+      // Calculate explicit water cups from ratio, rounding to nearest whole number
+      const recommendedWater = Math.max(1, Math.round(advice.riceCups * advice.waterRatio));
+
       setAiResponse({
-        message: `I've configured the cooker for ${advice.riceCups} cups of rice with a ${advice.waterRatio} water ratio using ${advice.mode} mode. ${advice.explanation}`,
+        message: `I've configured the cooker for ${advice.riceCups} cups of rice with ${recommendedWater} cups of water using ${advice.mode} mode. ${advice.explanation}`,
         config: {
           time: advice.estimatedTimeMinutes * 60,
           mode: advice.mode
         }
       });
-      // Auto-populate form with AI suggestion
-      setFormRice(advice.riceCups);
-      setFormRatio(advice.waterRatio);
-      setFormMode(advice.mode);
-      if (advice.estimatedTimeMinutes) setFormTime(advice.estimatedTimeMinutes);
+      if (deviceState.status === 'idle') {
+        setFormRice(advice.riceCups);
+        setFormWater(recommendedWater);
+        setFormMode(advice.mode);
+        if (advice.estimatedTimeMinutes) setFormTime(advice.estimatedTimeMinutes);
+      }
     } catch (error) {
       setAiResponse({ message: "Sorry, I couldn't connect to the chef. Please try again." });
     } finally {
@@ -417,6 +446,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  const isBusy = deviceState.status !== 'idle';
+  const ringColor = deviceState.status === 'dispensing' ? '#3FA7BB' : '#E2852E';
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8 animate-fade-in">
@@ -456,6 +488,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <div className="text-xs text-slate-500 uppercase font-bold tracking-wider">Status</div>
                       <div className={`font-semibold capitalize transition-colors duration-500 ${
                         deviceState.status === 'cooking' ? 'text-brand-600 animate-pulse' : 
+                        deviceState.status === 'dispensing' ? 'text-water-600 animate-pulse' : 
                         deviceState.status === 'warm' ? 'text-brand-400' : 'text-slate-600'
                       }`}>
                         {deviceState.status}
@@ -493,8 +526,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 
                 {/* Timer / Progress Circle */}
                 <div className="bg-white p-8 rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-slate-200 flex flex-col items-center justify-center relative overflow-hidden h-[400px] gap-10 group">
-                   {deviceState.status === 'cooking' && (
-                     <div className="absolute inset-0 bg-brand-50 opacity-50 animate-pulse-soft"></div>
+                   {(deviceState.status === 'cooking' || deviceState.status === 'dispensing') && (
+                     <div className={`absolute inset-0 opacity-20 animate-pulse-soft ${deviceState.status === 'dispensing' ? 'bg-water-100' : 'bg-brand-50'}`}></div>
                    )}
                    
                    <div className="relative z-10 w-64 h-64 flex-shrink-0 transition-transform duration-500 group-hover:scale-105">
@@ -503,7 +536,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <circle cx="128" cy="128" r="120" stroke="#f1f5f9" strokeWidth="12" fill="none" />
                         <circle 
                           cx="128" cy="128" r="120" 
-                          stroke="#E2852E" 
+                          stroke={ringColor}
                           strokeWidth="12" 
                           fill="none" 
                           strokeLinecap="round"
@@ -516,22 +549,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <span className="text-5xl font-mono font-bold text-slate-800 tabular-nums">
                           {formatTime(deviceState.timeLeftSeconds)}
                         </span>
-                        <span className="text-slate-500 mt-2 text-sm uppercase tracking-wider font-semibold">Remaining</span>
+                        <span className="text-slate-500 mt-2 text-sm uppercase tracking-wider font-semibold">
+                            {deviceState.status === 'dispensing' ? 'Dispensing' : 
+                             deviceState.status === 'cooking' ? 'Cooking' : 'Ready'}
+                        </span>
                       </div>
                    </div>
 
                    <div className="flex gap-4 z-10">
-                     {deviceState.status !== 'cooking' ? (
+                     {isBusy ? (
+                         <div className="flex gap-4">
+                           {deviceState.status === 'cooking' && (
+                            <button 
+                                onClick={handleStop}
+                                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-full font-bold shadow-lg transition-all transform hover:scale-105 active:scale-95 hover:shadow-xl">
+                                <Square className="w-5 h-5 fill-current" /> Stop Cook
+                            </button>
+                           )}
+                           <button 
+                            onClick={handleCancel}
+                            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-full font-bold shadow-lg shadow-red-200 transition-all transform hover:scale-105 active:scale-95 hover:shadow-red-300">
+                             <Ban className="w-5 h-5" /> Cancel All
+                           </button>
+                         </div>
+                     ) : (
                        <button 
                         onClick={handleCook}
                         className="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 hover:shadow-brand-300">
                          <Play className="w-5 h-5 fill-current" /> Start Cook ({formMode})
-                       </button>
-                     ) : (
-                       <button 
-                        onClick={handleStop}
-                        className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-8 py-3 rounded-full font-bold shadow-lg transition-all transform hover:scale-105 active:scale-95 hover:shadow-xl">
-                         <Square className="w-5 h-5 fill-current" /> Stop
                        </button>
                      )}
                    </div>
@@ -573,7 +618,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     </button>
                   </div>
                   {aiResponse?.config && (
-                    <button onClick={() => handleStartAI(aiResponse.config)} className="mt-2 w-full bg-brand-500 hover:bg-brand-600 text-white text-xs py-2 rounded-lg transition-all transform active:scale-95 shadow-md shadow-brand-200">
+                    <button onClick={() => handleStartAI(aiResponse.config)} disabled={isBusy} className="mt-2 w-full bg-brand-500 hover:bg-brand-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs py-2 rounded-lg transition-all transform active:scale-95 shadow-md shadow-brand-200">
                       Use AI Settings
                     </button>
                   )}
@@ -600,7 +645,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <button
                           key={preset.id}
                           onClick={() => handleApplyPreset(preset)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all hover:scale-105 active:scale-95 border border-transparent hover:border-slate-300"
+                          disabled={isBusy}
+                          className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all hover:scale-105 active:scale-95 border ${isBusy ? 'bg-slate-50 text-slate-300 border-transparent cursor-not-allowed' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 hover:border-slate-300'}`}
                         >
                           {preset.name}
                         </button>
@@ -609,7 +655,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         <div key={preset.id} className="relative group/preset">
                           <button
                             onClick={() => handleApplyPreset(preset)}
-                            className="px-3 py-1.5 text-xs font-medium rounded-full bg-brand-50 hover:bg-brand-100 text-brand-700 transition-all hover:scale-105 active:scale-95 border border-brand-100 pr-6"
+                            disabled={isBusy}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all hover:scale-105 active:scale-95 border pr-6 ${isBusy ? 'bg-slate-50 text-slate-300 border-transparent cursor-not-allowed' : 'bg-brand-50 hover:bg-brand-100 text-brand-700 border-brand-100'}`}
                           >
                             <span className="flex items-center gap-1">
                                <Heart className="w-3 h-3 fill-current" /> {preset.name}
@@ -628,7 +675,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     {/* Save Button */}
                     <button 
                       onClick={() => setShowSaveModal(true)}
-                      className="flex items-center gap-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 px-3 py-1.5 rounded-full transition-all hover:scale-105 shadow-md"
+                      disabled={isBusy}
+                      className="flex items-center gap-1.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 px-3 py-1.5 rounded-full transition-all hover:scale-105 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Save className="w-3 h-3" /> Save Config
                     </button>
@@ -637,7 +685,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                   {/* Left Column: Sliders and Mode */}
-                  <div className="space-y-8 px-2">
+                  <div className={`space-y-8 px-2 transition-opacity duration-300 ${isBusy ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                     <div className="group">
                       <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-brand-700 transition-colors">
                         Rice Amount <span className="text-brand-600 font-bold bg-brand-100 px-2 py-0.5 rounded-md">{formRice} Cups</span>
@@ -645,18 +693,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                       <input 
                         type="range" min="1" max="5" step="0.5" 
                         value={formRice} onChange={(e) => setFormRice(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-500 hover:accent-brand-600 transition-all"
+                        disabled={isBusy}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-500 hover:accent-brand-600 transition-all disabled:accent-slate-400"
                       />
                     </div>
                     
                     <div className="group">
                       <label className="flex justify-between text-sm font-medium text-slate-700 mb-3 group-hover:text-water-600 transition-colors">
-                        Water Ratio <span className="text-water-700 font-bold bg-water-100 px-2 py-0.5 rounded-md">{formRatio}x ({(formRice * formRatio).toFixed(1)} Cups)</span>
+                        Water Amount <span className="text-water-700 font-bold bg-water-100 px-2 py-0.5 rounded-md">{formWater} Cups</span>
                       </label>
                       <input 
-                        type="range" min="1" max="2.5" step="0.1" 
-                        value={formRatio} onChange={(e) => setFormRatio(parseFloat(e.target.value))}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-water-500 hover:accent-water-600 transition-all"
+                        type="range" min="1" max="10" step="1" 
+                        value={formWater} onChange={(e) => setFormWater(parseInt(e.target.value))}
+                        disabled={isBusy}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-water-500 hover:accent-water-600 transition-all disabled:accent-slate-400"
                       />
                     </div>
 
@@ -665,10 +715,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                         Cooking Duration <span className="text-brand-500 font-bold bg-brand-50 px-2 py-0.5 rounded-md">{formTime} Mins</span>
                       </label>
                       <input 
-                        type="range" min="20" max="120" step="5" 
+                        type="range" min="1" max="120" step="1" 
                         value={formTime} onChange={(e) => setFormTime(parseInt(e.target.value))}
-                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-300 hover:accent-brand-400 transition-all"
+                        disabled={isBusy}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-300 hover:accent-brand-400 transition-all disabled:accent-slate-400"
                       />
+                    </div>
+
+                    <div className="flex items-start gap-2 p-3 mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg border border-slate-200">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <p>
+                        <strong>Disclaimer:</strong> Please be aware of the possibility of the dispenser getting stuck or providing inconsistent measurements due to various factors including rice type, grain size, and shape.
+                      </p>
                     </div>
                   </div>
 
@@ -681,39 +739,67 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     <div className="mb-6 space-y-1 relative z-10">
                       <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Ready to Cook?</h4>
                       <p className="text-3xl font-extrabold text-slate-900 transition-all duration-300 key={formRice} animate-pop">{formRice} Cups Rice</p>
-                      <p className="text-lg font-medium text-slate-500 transition-all duration-300 key={formRatio}">+ {(formRice * formRatio).toFixed(1)} Cups Water</p>
+                      <p className="text-lg font-medium text-slate-500 transition-all duration-300 key={formWater}">+ {formWater} Cups Water</p>
                       <p className="text-sm font-semibold text-brand-600 mt-2 bg-brand-50 inline-block px-3 py-1 rounded-full">{formTime} Minutes Cycle</p>
                     </div>
                     
-                    {deviceState.status === 'cooking' ? (
-                       <button 
-                        disabled
-                        className="w-full max-w-sm flex items-center justify-center gap-3 bg-slate-200 text-slate-400 py-4 rounded-xl font-bold cursor-not-allowed opacity-75 relative z-10"
-                      >
-                        <Zap className="w-5 h-5 animate-pulse" /> Currently Cooking
-                      </button>
-                    ) : (
-                      <div className="w-full max-w-sm flex flex-col gap-3 relative z-10">
+                    <div className="w-full max-w-sm flex flex-col gap-3 relative z-10">
+                        {/* Dispense Button */}
                         <button 
                           onClick={handleDispense}
-                          className="w-full flex items-center justify-center gap-3 bg-water-500 hover:bg-water-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-water-200 transition-all transform hover:scale-105 active:scale-95 group/dispense relative overflow-hidden"
+                          disabled={isBusy}
+                          className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl font-bold shadow-lg transition-all transform relative overflow-hidden
+                            ${deviceState.status === 'dispensing' 
+                                ? 'bg-water-100 text-water-700 cursor-not-allowed shadow-none border-2 border-water-200' 
+                                : isBusy 
+                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                    : 'bg-water-500 hover:bg-water-600 text-white hover:scale-105 active:scale-95 shadow-water-200'
+                            }
+                          `}
                         >
-                          <Droplets className="w-5 h-5 relative z-10" /> 
-                          <span className="relative z-10">Dispense Only</span>
+                          {deviceState.status === 'dispensing' ? (
+                              <><Droplets className="w-5 h-5 animate-bounce" /> Dispensing...</>
+                          ) : (
+                              <><Droplets className="w-5 h-5 relative z-10" /> <span className="relative z-10">Dispense Only</span></>
+                          )}
                         </button>
 
+                        {/* Cook Button */}
                         <button 
                           onClick={handleCook}
-                          className="w-full flex items-center justify-center gap-3 bg-brand-500 hover:bg-brand-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-brand-200 transition-all transform hover:scale-105 active:scale-95 group/cook relative overflow-hidden"
+                          disabled={isBusy}
+                          className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl font-bold shadow-lg transition-all transform relative overflow-hidden
+                            ${deviceState.status === 'cooking' 
+                                ? 'bg-brand-100 text-brand-700 cursor-not-allowed shadow-none border-2 border-brand-200' 
+                                : isBusy 
+                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                                    : 'bg-brand-500 hover:bg-brand-600 text-white hover:scale-105 active:scale-95 shadow-brand-200'
+                            }
+                          `}
                         >
-                          <Flame className="w-5 h-5 relative z-10" /> 
-                          <span className="relative z-10">Start Cooking</span>
+                           {deviceState.status === 'cooking' ? (
+                              <><Zap className="w-5 h-5 animate-pulse" /> Cooking...</>
+                          ) : (
+                              <><Flame className="w-5 h-5 relative z-10" /> <span className="relative z-10">Start Cooking</span></>
+                          )}
                         </button>
-                      </div>
+                        
+                        {/* Cancel Button (Visible only when busy) */}
+                        {isBusy && (
+                             <button 
+                                onClick={handleCancel}
+                                className="w-full flex items-center justify-center gap-2 text-red-500 hover:text-red-700 font-semibold text-sm py-2 transition-colors mt-2"
+                             >
+                               <Ban className="w-4 h-4" /> Cancel Operation
+                             </button>
+                        )}
+                    </div>
+
+                    {!isBusy && (
+                      <p className="text-xs text-slate-400 mt-4 max-w-xs mx-auto relative z-10">
+                        Dispense ingredients first, then start the cooking cycle.
+                      </p>
                     )}
-                    <p className="text-xs text-slate-400 mt-4 max-w-xs mx-auto relative z-10">
-                      Dispense ingredients first, then start the cooking cycle.
-                    </p>
                   </div>
                 </div>
               </div>
@@ -745,17 +831,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                     <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                       {ownedDevices.map(id => (
                         <div key={id} 
-                          onClick={() => { setSelectedDeviceId(id); setShowDeviceManager(false); }}
-                          className={`flex justify-between items-center p-3 rounded-lg border cursor-pointer transition-all hover:scale-[1.02] ${selectedDeviceId === id ? 'border-brand-500 bg-brand-50 shadow-sm' : 'border-slate-100 hover:bg-slate-50'}`}
+                          className={`flex justify-between items-center rounded-lg border transition-all hover:scale-[1.02] ${selectedDeviceId === id ? 'border-brand-500 bg-brand-50 shadow-sm' : 'border-slate-100 hover:bg-slate-50'}`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div 
+                            className="flex-1 flex items-center gap-3 p-3 cursor-pointer"
+                            onClick={() => { setSelectedDeviceId(id); setShowDeviceManager(false); }}
+                          >
                             <Smartphone className={`w-4 h-4 ${selectedDeviceId === id ? 'text-brand-600' : 'text-slate-400'}`} />
                             <span className={`text-sm font-medium ${selectedDeviceId === id ? 'text-brand-900' : 'text-slate-700'}`}>{id}</span>
                           </div>
                           <button 
                             type="button"
                             onClick={(e) => handleDeleteDevice(e, id)}
-                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                            className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors mr-1"
                             title="Remove Device"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -803,7 +891,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 
                 <div className="bg-slate-50 p-4 rounded-xl mb-4 text-sm text-slate-600 space-y-2">
                    <div className="flex justify-between"><span>Rice:</span> <span className="font-semibold">{formRice} cups</span></div>
-                   <div className="flex justify-between"><span>Water Ratio:</span> <span className="font-semibold">{formRatio}x</span></div>
+                   <div className="flex justify-between"><span>Water:</span> <span className="font-semibold">{formWater} cups</span></div>
                    <div className="flex justify-between"><span>Time:</span> <span className="font-semibold">{formTime} mins</span></div>
                    <div className="flex justify-between"><span>Mode:</span> <span className="font-semibold capitalize">{formMode}</span></div>
                 </div>
