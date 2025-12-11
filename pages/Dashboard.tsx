@@ -127,9 +127,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         } else if (data.dispense) {
           // DISPENSING LOGIC
           newStatus = 'dispensing';
-          // Estimate dispensing time based on cups (5s base + 2s per cup rice)
+          
           const riceAmount = data.riceDispenseCup || 0;
-          totalTime = 5 + (riceAmount * 2);
+          const waterAmount = data.waterDispenseCup || 0;
+          
+          // Calculation: (Rice * 7.5s) + (Water * 10s) + 5s buffer
+          totalTime = Math.ceil((riceAmount * 7.5) + (waterAmount * 10) + 5);
+          
           // For dispensing, we don't strictly persist time across reloads in this version,
           // but we could if we added a dispenseStartTime.
           // For now, it resets on reload, but completion is handled by timer logic.
@@ -193,9 +197,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                    cookTime: 0,
                    cookStartTime: null
                  });
+             } else if (deviceState.status === 'dispensing') {
+                 // Dispensing finished - Auto back to neutral
+                 update(ref(db, `devices/${selectedDeviceId}`), { 
+                   dispense: false,
+                   riceDispenseCup: 0,
+                   waterDispenseCup: 0
+                 });
              }
-             // NOTE: Auto-off for dispense removed per request. 
-             // Device remains in 'dispensing' state (0s left) until hardware or user updates DB.
          }
       } else {
         interval = setInterval(() => {
@@ -239,17 +248,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
     // Use explicit whole number cups
     const waterCups = formWater;
+    const riceCups = formRice;
     
     const updates = {
       dispense: true,
-      riceDispenseCup: formRice,
+      riceDispenseCup: riceCups,
       waterDispenseCup: waterCups,
       cook: false,
       cookTime: 0,
       cookStartTime: null
     };
 
-    const dispenseTime = 5 + Math.ceil(formRice * 2);
+    // Calculation: (Rice * 7.5s) + (Water * 10s) + 5s buffer
+    const dispenseTime = Math.ceil((riceCups * 7.5) + (waterCups * 10) + 5);
     
     setDeviceState(prev => ({ 
         ...prev, 
